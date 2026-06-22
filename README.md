@@ -1,14 +1,14 @@
-# RAGBot — A Grounded Course Tutor with Anti-Cheat Guardrails
+# RAGBot — A Grounded Course Tutor with Guardrails
 
 A retrieval-augmented tutor built over a full semester of a real university database course
-(lecture transcripts, textbook chapters, slide decks, assignment prompts, and the course
+(lecture transcripts, textbook chapters, slide decks, assignments, and the course
 calendar). It answers questions grounded in those sources with exact citations — and, crucially,
 **guides students through assignments without ever handing them the solution.**
 
 This is deliberately *not* another "chat with your PDF" demo. The engineering centers on three
 problems that generic RAG ignores:
 
-1. **Anti-cheat guardrail.** For assignment-related questions the tutor returns *where to look*
+1. **Guardrails.** For assignment-related questions the tutor returns *where to look*
    (lecture timestamp, textbook page), analogies, and Socratic prompts — never the literal
    answer. This is enforced and measured as an adversarial evaluation (answer-leak rate).
 2. **Routed retrieval.** Flat, keyword-rich lecture transcripts use hybrid retrieval
