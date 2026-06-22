@@ -1,0 +1,45 @@
+# Course data — kept local, not published (course-owned materials)
+misccontext/
+transcripts/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.uv/
+
+# Vector store / generated indexes
+.chroma/
+chroma/
+*.sqlite3
+data/index/
+data/cache/
+
+# Node / Next.js (frontend)
+node_modules/
+.next/
+out/
+.turbo/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
