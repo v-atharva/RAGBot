@@ -1,10 +1,13 @@
-.PHONY: install ingest eval run lint typecheck test check fmt
+.PHONY: install ingest index eval run lint typecheck test check fmt
 
 install:
 	uv pip install -e ".[dev]"
 
 ingest:
 	python -m ragbot.ingest.run
+
+index:
+	python -m ragbot.retrieve.build_index
 
 eval:
 	python -m ragbot.eval.run
