@@ -43,3 +43,6 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# Generated lecture summaries (course-derived)
+generated_summaries/
