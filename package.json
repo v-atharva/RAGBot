@@ -1,0 +1,8 @@
+{
+  "name": "ragbot",
+  "private": true,
+  "description": "Dev launcher for the RAGBot backend + frontend (run with: bun dev)",
+  "scripts": {
+    "dev": "bun run scripts/dev.ts"
+  }
+}

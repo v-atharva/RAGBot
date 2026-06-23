@@ -59,10 +59,15 @@ query → classify intent
 
 ## Model & serving
 
-- **Model:** Qwen2.5-7B/14B-Instruct (long context up to 128K, strong on structured/technical
-  content, runs quantized locally). No per-call cost; offline; reproducible from clone.
-- **Serving:** Ollama for development and demo. A thin LLM-client interface keeps the door open
-  for vLLM later (better KV-cache control for true CAG snapshots).
+- **Model:** Qwen3.5-9B-Instruct (`qwen3.5:9b`) — 262K context, strong on structured/technical
+  content, runs quantized locally on ~16 GB. No per-call cost; offline; reproducible from clone.
+  Selected over the 27B/35B tiers because the CAG layer needs a large KV-cache headroom that the
+  9B leaves room for on a 16 GB machine. It is a *thinking* model; the reasoning trace is disabled
+  at call time (`think: false`) so the budget goes to the answer.
+- **Serving:** Ollama for development and demo. A thin, provider-agnostic LLM-client interface
+  (`src/ragbot/tutor/llm.py`) keeps the door open for a hosted backend later — set
+  `LLM_PROVIDER=anthropic` + `LLM_API_KEY` to swap with no code changes (and vLLM later for
+  better KV-cache control / true CAG snapshots).
 
 ## On fine-tuning (deliberately deferred)
 

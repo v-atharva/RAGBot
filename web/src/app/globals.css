@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Design tokens (light) ---- */
+:root {
+  --background: #f5f7fb;
+  --surface: #ffffff;
+  --surface-2: #f0f3f9;
+  --border: #e2e7f0;
+  --foreground: #0f172a;
+  --muted: #5d6b85;
+  --accent: #4f46e5;
+  --accent-press: #4338ca;
+  --accent-fg: #ffffff;
+
+  --lecture: #1d4ed8;
+  --lecture-bg: #e3edff;
+  --lecture-border: #c2d6ff;
+  --timestamp: #b45309;
+  --timestamp-bg: #fcefd2;
+  --timestamp-border: #f3d8a2;
+
+  --ring: #6366f1;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+}
+
+/* ---- Design tokens (dark) ---- */
+.dark {
+  --background: #0a0e16;
+  --surface: #121826;
+  --surface-2: #0e1320;
+  --border: #243049;
+  --foreground: #e7ebf3;
+  --muted: #97a4bc;
+  --accent: #6366f1;
+  --accent-press: #818cf8;
+  --accent-fg: #ffffff;
+
+  --lecture: #9cc0ff;
+  --lecture-bg: #15233f;
+  --lecture-border: #2c456f;
+  --timestamp: #f1c45a;
+  --timestamp-bg: #2b2210;
+  --timestamp-border: #4a3a18;
+
+  --ring: #818cf8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-lecture: var(--lecture);
+  --color-timestamp: var(--timestamp);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ---- Citation chips ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.375rem;
+  padding: 0.05rem 0.4rem;
+  margin: 0 0.1rem;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.chip-lecture {
+  background: var(--lecture-bg);
+  color: var(--lecture);
+  border: 1px solid var(--lecture-border);
+}
+.chip-timestamp {
+  background: var(--timestamp-bg);
+  color: var(--timestamp);
+  border: 1px solid var(--timestamp-border);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}

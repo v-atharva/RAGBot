@@ -67,22 +67,38 @@ Evaluation (offline)
 
 ## Getting started
 
+Local-first: the demo runs entirely offline against a local Ollama model — no API key needed.
+
 ```bash
-# 1. Install dependencies
+# 0. Prerequisites: `uv` (Python), Node.js (frontend), and Ollama with the model pulled
+ollama pull qwen3.5:9b
+
+# 1. Backend deps (creates .venv via uv) + build the index
 make install
+make build-all          # ingest -> chunks, then build the hybrid index
+make web-install        # frontend deps
 
-# 2. Provide course materials locally (not committed) under misccontext/ and transcripts/,
-#    plus an LLM API key in .env (see .env.example)
-
-# 3. Build the index
-make ingest
-
-# 4. Run the evaluation suites
-make eval
-
-# 5. Start the API + UI
-make run
+# 2. Start BOTH the API and the frontend with one command (bun):
+bun dev                 # api → http://localhost:8000   web → http://localhost:3000
 ```
+
+`bun dev` runs both servers together with colour-coded, prefixed output and shuts both down on
+Ctrl-C (see `scripts/dev.ts`). Prefer them split across two terminals? Use `make serve` and
+`make web` instead.
+
+Open http://localhost:3000, pick a mode, and ask. To go online later, set `LLM_PROVIDER=anthropic`
+and `LLM_API_KEY` in `.env` — no code changes.
+
+### The two modes
+
+- **Lecture-only** answers *when / where* a topic was covered: a deterministic, timestamp-heavy
+  timeline from the concept index — first proper mention, then every later mention with a blurb.
+- **Course-wide** explains the concept, then grounds it against retrieved transcript/material
+  chunks with exact citations. Lecture summaries *enrich* retrieval and *frame* the answer, but
+  are never cited — citations always resolve to real transcript timestamps.
+
+In the UI, **lecture references render in blue** and **timestamps in amber**, both as the answer
+prose is written and in the references panel.
 
 > **Note on data.** The course materials (transcripts, textbook chapters, assignment prompts)
 > are owned by the course and are intentionally **not** committed — see `.gitignore`. The
