@@ -8,7 +8,7 @@ should call ``datetime.now()`` directly — always go through :func:`now`.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def now() -> datetime:
@@ -19,8 +19,8 @@ def now() -> datetime:
     """
     raw = os.environ.get("MOCK_NOW", "").strip()
     if not raw:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     parsed = datetime.fromisoformat(raw)
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
