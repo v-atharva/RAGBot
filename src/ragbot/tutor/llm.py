@@ -56,9 +56,10 @@ class OllamaClient:
                 {"role": "user", "content": user},
             ],
             "stream": False,
-            # qwen3.5 is a thinking model; we want the answer, not the reasoning trace.
-            # Disabling it avoids the trace consuming the token budget (which left the
-            # answer empty), and is much faster for an interactive UI.
+            # qwen3.5 is a thinking model, but we keep thinking OFF: we want the synthesized
+            # answer, not the reasoning trace, which would otherwise eat the token budget
+            # (leaving the answer empty) and make every reply much slower. strip_think() below
+            # still scrubs any stray <think> trace so callers always get clean prose.
             "think": False,
             "options": {"temperature": temperature, "num_ctx": self.num_ctx},
         }

@@ -19,7 +19,12 @@ from ragbot.summaries.concepts import ConceptEntry
 from .concept_store import ConceptStore
 from .enrich import enrich_query, framing_context
 from .llm import LLMClient, LLMError
-from .prompts import COURSE_WIDE_SYSTEM, build_course_wide_user
+from .prompts import (
+    COURSE_WIDE_SYSTEM,
+    LECTURE_ONLY_SYSTEM,
+    build_course_wide_user,
+    build_lecture_only_user,
+)
 from .references import build_reference_list
 from .schemas import LectureReference, Mode, QueryRequest, QueryResponse
 from .segment import segment_prose
@@ -52,7 +57,7 @@ def answer(
     matched = [e.concept for e in entries]
 
     if request.mode is Mode.lecture_only:
-        return _lecture_only(request, references, matched)
+        return _lecture_only(request, references, matched, llm)
     return _course_wide(request, entries, references, matched, store, index, llm, settings)
 
 
@@ -60,30 +65,22 @@ def _lecture_only(
     request: QueryRequest,
     references: list[LectureReference],
     matched: list[str],
+    llm: LLMClient,
 ) -> QueryResponse:
-    """A deterministic 'when / where' locator — instant, with the full timeline in references.
+    """A 'when / where' locator: the model phrases the answer over the authoritative,
+    pre-computed reference list (it is told to locate, never to explain).
 
-    The model is intentionally not called here: the answer is entirely derived from the
-    concept index, so a templated lead is faster and cannot drift from the cited data.
+    The structured ``references`` are what the UI renders as chips, so even if the model
+    drifts, the cited data stays correct. If the model is unavailable we fall back to a
+    deterministic locator so the mode still works offline.
     """
-    first = next((r for r in references if r.is_first_mention), None)
-    n_lectures = sum(1 for r in references if r.timestamps)
-
-    parts: list[str] = []
-    if first and first.timestamps:
-        ts0 = first.timestamps[0].timestamp
-        lead = f"First covered in [Lecture {first.lecture_number} @ {ts0}]"
-        if first.timestamps[0].blurb:
-            lead += f" — {first.timestamps[0].blurb}"
-        parts.append(lead + ".")
-    if n_lectures > 1:
-        parts.append(
-            f"It comes up across {n_lectures} lectures in total — see the full timeline below, "
-            "and open the recordings at those timestamps to hear it explained."
-        )
-    elif first:
-        parts.append("Open the recording at that timestamp to hear it explained.")
-    prose = " ".join(parts) if parts else _deterministic_locator(references)
+    user = build_lecture_only_user(request.question, references)
+    try:
+        prose = llm.chat(LECTURE_ONLY_SYSTEM, user, temperature=0.2)
+        if not prose.strip():
+            prose = _deterministic_locator(references)
+    except LLMError:
+        prose = _deterministic_locator(references)
 
     return QueryResponse(
         mode=request.mode,
