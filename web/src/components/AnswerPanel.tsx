@@ -2,7 +2,7 @@
 
 import type { QueryResponse } from "@/lib/types";
 import { Card, Badge } from "./ui";
-import { AnswerSegments } from "./AnswerSegments";
+import { AnswerMarkdown } from "./AnswerMarkdown";
 import { References } from "./References";
 
 function Legend() {
@@ -18,7 +18,15 @@ function Legend() {
   );
 }
 
-export function AnswerPanel({ data }: { data: QueryResponse }) {
+export function AnswerPanel({
+  data,
+  onInspect,
+  inspectBusy,
+}: {
+  data: QueryResponse;
+  onInspect?: () => void;
+  inspectBusy?: boolean;
+}) {
   if (data.no_concept_match) {
     return (
       <Card className="p-6">
@@ -38,7 +46,18 @@ export function AnswerPanel({ data }: { data: QueryResponse }) {
             <Badge key={c}>{c}</Badge>
           ))}
         </div>
-        <Legend />
+        <div className="flex items-center gap-3">
+          <Legend />
+          {onInspect && (
+            <button
+              onClick={onInspect}
+              disabled={inspectBusy}
+              className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:text-accent disabled:opacity-60"
+            >
+              {inspectBusy ? "Inspecting…" : "🔍 Inspect"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="px-6 py-5">
@@ -46,11 +65,16 @@ export function AnswerPanel({ data }: { data: QueryResponse }) {
           <p className="mb-4 text-[15px] font-medium text-foreground">{data.intro_text}</p>
         )}
 
-        {data.explanation_segments.length > 0 && (
-          <AnswerSegments segments={data.explanation_segments} />
+        {data.answer_markdown && (
+          <AnswerMarkdown markdown={data.answer_markdown} markerMap={data.marker_map} />
         )}
 
-        <References references={data.references} caption={data.references_caption} />
+        <References
+          references={data.references}
+          caption={data.references_caption}
+          coverage={data.coverage_timeline}
+          coverageCaption={data.coverage_caption}
+        />
 
         {data.citations.length > 0 && (
           <details className="mt-6 rounded-xl border border-border bg-surface-2/50 px-4 py-3 text-sm">
@@ -58,7 +82,7 @@ export function AnswerPanel({ data }: { data: QueryResponse }) {
               Grounded in {data.citations.length} source excerpt
               {data.citations.length === 1 ? "" : "s"}
             </summary>
-            <ul className="mt-2 space-y-1 font-mono text-xs text-muted">
+            <ul className="scroll-fade mt-2 max-h-48 space-y-1 overflow-auto font-mono text-xs text-muted">
               {data.citations.map((c, i) => (
                 <li key={i}>{c}</li>
               ))}

@@ -1,16 +1,18 @@
 """System prompts and user-message builders for the two tutor modes.
 
 Lecture-only is a *when/where* locator: it must NOT explain the concept, only point to where
-it is covered (driven by the deterministic reference list). Course-wide explains first from
-the model's own knowledge, then grounds against retrieved transcript excerpts — citing only
-those excerpts, never the summary framing notes.
+it is covered (driven by the deterministic reference list). Course-wide writes one cohesive,
+self-contained mini-lesson and grounds specific claims against retrieved excerpts using stable
+numbered source markers (``[S1]``, ``[S2]`` …) — never raw filename tags, which the model
+used to mangle. Markers are resolved back to structured citations after generation.
 """
 
 from __future__ import annotations
 
 from ragbot.retrieve.index import RetrievedChunk
 
-from .schemas import LectureReference
+from .citations import CitationRef, format_reference
+from .schemas import LectureReference, Turn
 
 LECTURE_ONLY_SYSTEM = """\
 You are a teaching assistant for a university Database Design course, operating in \
@@ -37,26 +39,53 @@ form [Lecture N @ HH:MM:SS] for every citation."""
 
 COURSE_WIDE_SYSTEM = """\
 You are a teaching assistant for a university Database Design course, operating in \
-COURSE-WIDE mode. You explain the concept, then ground it in this course's own materials.
+COURSE-WIDE mode. Write ONE cohesive, self-contained explanation that the student can learn \
+from WITHOUT opening any video. Do not print section headers like "PART 1" or "PART 2" — just \
+teach.
 
-Answer in two parts, in order:
+Answer the question directly and completely, including questions tied to a practice exercise \
+(PE) or homework (HW). If the student asks for the solution to an assignment problem, GIVE the \
+full worked solution (the SQL, the schema, the normalization steps, etc.) — do not withhold it, \
+do not deflect to "where to look", and do not turn it into a Socratic hint. Be a tutor that \
+solves the problem and explains how.
 
-PART 1 — EXPLAIN: Using your own knowledge, clearly and concisely explain the concept at the \
-level of an introductory database course.
+Format your answer as GitHub-flavored MARKDOWN: use **bold** for key terms, *italics* for \
+emphasis, `inline code` for identifiers/keywords, ```sql fenced code blocks``` for SQL or shell \
+commands, and `-`/`1.` lists where they aid clarity. Keep prose in short paragraphs; use a small \
+`###` sub-heading only if it genuinely helps. Do NOT wrap the whole answer in a code block.
 
-PART 2 — GROUND: Then reconcile your explanation with how THIS course actually teaches it. \
-You are given:
-  (a) FRAMING NOTES distilled from lecture summaries — use these ONLY to understand the \
-course's framing and emphasis. Do NOT cite them; they are not evidence.
-  (b) RETRIEVED EXCERPTS from the lecture transcripts and course materials, each tagged with \
-a citation like [24_BCNF... @ 00:09:53]. Correct anything in your explanation that conflicts \
-with these excerpts, and fill gaps they cover. When a statement rests on an excerpt, cite it \
-inline using its exact tag.
+Your explanation must:
+- Explain the concept clearly at the level of an introductory database course.
+- Include at least one intuitive ANALOGY that builds intuition.
+- Include at least one concrete WORKED EXAMPLE. Strongly prefer the course's OWN examples when \
+they appear in the SOURCES below (e.g. a specific table, query, or scenario the instructor \
+used); otherwise construct a small clear one.
+- Use the FRAMING NOTES only to match how THIS course frames and emphasizes the topic. The \
+framing notes are NOT evidence — never cite them.
 
-Cite ONLY the retrieved excerpts — never the framing notes, and never invent a citation, \
-timestamp, or quotation. If the excerpts do not cover a point, rely on your general \
-explanation and do not cite. Write in clear prose; use "Lecture N" when naming a lecture. \
-Do NOT output a reference list yourself — an authoritative one is appended automatically."""
+Grounding rules (important):
+- Each SOURCE excerpt is labeled with a bracketed id like [S1], [S2]. When a specific sentence \
+rests on a particular excerpt, cite it by placing the id immediately after that sentence, \
+e.g. "Every determinant must be a candidate key.[S2]" You may combine ids like [S1][S3].
+- Cite ONLY where an excerpt genuinely supports the sentence. Sentences that come from your \
+general knowledge need no citation.
+- NEVER write a raw filename, a page tag, or a timestamp as a citation, and NEVER invent an \
+id or a fact. Use only the [S#] ids that are actually provided.
+- Do NOT output a reference/sources list yourself — an authoritative one is appended \
+automatically."""
+
+
+def _render_history(history: list[Turn], *, max_chars: int = 600) -> str:
+    """Compact rendering of recent turns for synthesis continuity (E.3)."""
+    if not history:
+        return ""
+    blocks: list[str] = []
+    for t in history:
+        ans = t.answer.strip().replace("\n", " ")
+        if len(ans) > max_chars:
+            ans = ans[:max_chars].rstrip() + "…"
+        blocks.append(f"Q: {t.question.strip()}\nA: {ans}")
+    return "Earlier in this conversation (context only — do not cite):\n" + "\n\n".join(blocks)
 
 
 def render_references_for_prompt(refs: list[LectureReference]) -> str:
@@ -73,28 +102,47 @@ def render_references_for_prompt(refs: list[LectureReference]) -> str:
     return "\n".join(lines) if lines else "(no recorded mentions found)"
 
 
-def build_lecture_only_user(question: str, refs: list[LectureReference]) -> str:
+def build_lecture_only_user(
+    question: str, refs: list[LectureReference], history: list[Turn] | None = None
+) -> str:
+    hist = _render_history(history or [])
+    hist_block = f"{hist}\n\n" if hist else ""
     return (
+        f"{hist_block}"
         f"Student question: {question}\n\n"
         f"Authoritative coverage data (use only this):\n"
         f"{render_references_for_prompt(refs)}\n"
     )
 
 
-def render_chunks_for_prompt(chunks: list[RetrievedChunk]) -> str:
+def render_markered_chunks(
+    chunks: list[RetrievedChunk], marker_map: dict[str, CitationRef]
+) -> str:
+    """Present each retrieved chunk with its stable [S#] id and a human label."""
     if not chunks:
         return "(no excerpts retrieved)"
-    blocks = [f"{c.citation}\n{c.text.strip()}" for c in chunks]
+    blocks: list[str] = []
+    for i, c in enumerate(chunks):
+        ref = marker_map.get(f"S{i + 1}")
+        label = format_reference(ref) if ref else c.citation
+        blocks.append(f"[S{i + 1}] ({label})\n{c.text.strip()}")
     return "\n\n".join(blocks)
 
 
 def build_course_wide_user(
-    question: str, framing: str, chunks: list[RetrievedChunk]
+    question: str,
+    framing: str,
+    chunks: list[RetrievedChunk],
+    marker_map: dict[str, CitationRef],
+    history: list[Turn] | None = None,
 ) -> str:
+    hist = _render_history(history or [])
+    hist_block = f"{hist}\n\n" if hist else ""
     return (
+        f"{hist_block}"
         f"Student question: {question}\n\n"
         f"FRAMING NOTES (for understanding only — do NOT cite):\n"
         f"{framing or '(none)'}\n\n"
-        f"RETRIEVED EXCERPTS (cite these by their exact tag):\n"
-        f"{render_chunks_for_prompt(chunks)}\n"
+        f"SOURCES (cite these by their [S#] id, only where they support a sentence):\n"
+        f"{render_markered_chunks(chunks, marker_map)}\n"
     )

@@ -25,6 +25,9 @@ chroma/
 data/index/
 data/cache/
 
+# Eval question cache (regenerable; data/eval/golden.jsonl stays tracked)
+data/eval/questions.jsonl
+
 # Node / Next.js (frontend)
 node_modules/
 .next/

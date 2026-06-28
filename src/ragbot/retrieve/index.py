@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,16 @@ def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+# Stopwords stripped when testing whether a query shares *content* vocabulary with the corpus.
+# (BM25 alone can't gate relevance: common words like "how"/"the" appear in nearly every chunk.)
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "if", "then", "is", "are", "was", "were", "be",
+    "to", "of", "in", "on", "for", "with", "how", "do", "does", "did", "can", "could", "i",
+    "you", "we", "what", "when", "where", "why", "which", "who", "this", "that", "it", "as",
+    "at", "by", "from", "about", "into", "my", "your", "me", "turn",
+}
+
+
 class RetrievedChunk(BaseModel):
     chunk_id: str
     text: str
@@ -36,6 +47,31 @@ class RetrievedChunk(BaseModel):
     citation: str
     exercise_id: str | None = None
     score: float = 0.0
+
+
+# --- Phase-2 trace artifacts (raw data; schemas.py shapes the API payload) ---
+
+
+@dataclass
+class LexicalGateReport:
+    """Why the concept-less relevance gate passed/failed (see has_lexical_match)."""
+
+    tokens: list[str]
+    content_tokens: list[str]
+    dropped_stopwords: list[str]
+    in_vocab: list[str]
+    fraction: float
+    passed: bool
+
+
+@dataclass
+class RetrievalTrace:
+    """Per-stage rankings recorded by search_with_trace (dense ‖ sparse → RRF → filters)."""
+
+    dense: list[tuple[str, float]] = field(default_factory=list)  # (chunk_id, 1 - cos distance)
+    sparse: list[tuple[str, float]] = field(default_factory=list)  # (chunk_id, BM25 score)
+    fused: list[tuple[str, float]] = field(default_factory=list)  # (chunk_id, RRF score)
+    excluded: list[tuple[str, str]] = field(default_factory=list)  # (chunk_id, reason)
 
 
 class HybridIndex:
@@ -51,6 +87,7 @@ class HybridIndex:
         self._bm25: Any = None
         self._bm25_ids: list[str] = []
         self._records: dict[str, dict[str, Any]] = {}
+        self._vocab: set[str] = set()  # all content tokens in the corpus (relevance gate)
 
     # --- build ---
     def _get_collection(self) -> Collection:
@@ -101,7 +138,9 @@ class HybridIndex:
 
         self._bm25_ids = [c["chunk_id"] for c in chunks]
         self._records = {c["chunk_id"]: c for c in chunks}
-        self._bm25 = BM25Okapi([_tokenize(c["text"]) for c in chunks])
+        tokenized = [_tokenize(c["text"]) for c in chunks]
+        self._bm25 = BM25Okapi(tokenized)
+        self._vocab = {tok for doc in tokenized for tok in doc}
 
     def _ensure_sparse(self) -> None:
         if self._bm25 is not None:
@@ -130,9 +169,9 @@ class HybridIndex:
         ``categories`` optionally restricts to specific source categories.
         """
         self._ensure_sparse()
-        dense_ids = self._dense_rank(query, candidates)
-        sparse_ids = self._sparse_rank(query, candidates)
-        fused = self._rrf(dense_ids, sparse_ids, rrf_k)
+        dense_ids = self._dense_rank(query, candidates)  # semantic: embedding cosine NN
+        sparse_ids = self._sparse_rank(query, candidates)  # lexical: BM25 keyword match
+        fused = self._rrf(dense_ids, sparse_ids, rrf_k)  # combine both rankings into one order
 
         results: list[RetrievedChunk] = []
         for cid, score in fused:
@@ -159,6 +198,91 @@ class HybridIndex:
                 break
         return results
 
+    def lexical_gate_report(self, query: str, *, min_fraction: float = 0.5) -> LexicalGateReport:
+        """Detail behind :meth:`has_lexical_match` — the tokens, dropped stopwords, the content
+        terms found in the corpus vocabulary, and the resulting fraction/pass (for the trace)."""
+        try:
+            self._ensure_sparse()
+        except RuntimeError:
+            return LexicalGateReport([], [], [], [], 0.0, False)
+        tokens = _tokenize(query)
+        content = [t for t in tokens if len(t) > 2 and t not in _STOPWORDS]
+        dropped = [t for t in tokens if t not in content]
+        in_vocab = [t for t in content if t in self._vocab]
+        fraction = (len(in_vocab) / len(content)) if content else 0.0
+        return LexicalGateReport(
+            tokens=tokens,
+            content_tokens=content,
+            dropped_stopwords=dropped,
+            in_vocab=in_vocab,
+            fraction=fraction,
+            passed=bool(content) and fraction >= min_fraction,
+        )
+
+    def has_lexical_match(self, query: str, *, min_fraction: float = 0.5) -> bool:
+        """True if a meaningful share of the query's content words occur in the corpus.
+
+        A relevance gate for concept-less queries (workstream A): dense retrieval always returns
+        nearest neighbours, so an off-topic question ("deploy Kubernetes") would otherwise look
+        "answerable". We require at least ``min_fraction`` of the query's content tokens to share
+        the corpus vocabulary — so on-topic phrasing ("verbose on mac" -> 2/2) passes, while a
+        question with only an incidental word in common ("unladen swallow" -> 1/4) falls through
+        to the "no match" nudge.
+        """
+        return self.lexical_gate_report(query, min_fraction=min_fraction).passed
+
+    def search_with_trace(
+        self,
+        query: str,
+        k: int = 8,
+        *,
+        candidates: int = 30,
+        exclude_high_sensitivity: bool = False,
+        categories: list[str] | None = None,
+        rrf_k: int = 60,
+    ) -> tuple[list[RetrievedChunk], RetrievalTrace]:
+        """Like :meth:`search`, but also records dense/sparse/fused rankings + filter drops.
+
+        Kept separate from the (byte-for-byte unchanged, hot-path) ``search`` so the default
+        query stays fast; here we issue exactly one dense query (the *scored* variant) and walk
+        the fused list the same way ``search`` does.
+        """
+        self._ensure_sparse()
+        dense_scored = self._dense_rank_scored(query, candidates)
+        sparse_scored = self._sparse_rank_scored(query, candidates)
+        fused = self._rrf([c for c, _ in dense_scored], [c for c, _ in sparse_scored], rrf_k)
+
+        results: list[RetrievedChunk] = []
+        excluded: list[tuple[str, str]] = []
+        for cid, score in fused:
+            rec = self._records.get(cid)
+            if rec is None:
+                continue
+            if exclude_high_sensitivity and rec.get("sensitivity") == "high":
+                excluded.append((cid, "sensitivity"))
+                continue
+            if categories and rec.get("category") not in categories:
+                excluded.append((cid, "category"))
+                continue
+            results.append(
+                RetrievedChunk(
+                    chunk_id=cid,
+                    text=rec["text"],
+                    source_file=rec["source_file"],
+                    category=rec["category"],
+                    sensitivity=rec["sensitivity"],
+                    citation=rec["citation"],
+                    exercise_id=rec.get("exercise_id") or None,
+                    score=score,
+                )
+            )
+            if len(results) >= k:
+                break
+        trace = RetrievalTrace(
+            dense=dense_scored, sparse=sparse_scored, fused=fused, excluded=excluded
+        )
+        return results, trace
+
     def _dense_rank(self, query: str, n: int) -> list[str]:
         col = self._get_collection()
         qvec = self.embedder.encode_query(query)
@@ -166,11 +290,35 @@ class HybridIndex:
         ids = res.get("ids") or [[]]
         return list(ids[0])
 
+    def _dense_rank_scored(self, query: str, n: int) -> list[tuple[str, float]]:
+        """Dense ranking with similarity scores. Chroma returns cosine *distance*; we report
+        ``1 - distance`` so higher = closer (labelled accordingly in the UI)."""
+        col = self._get_collection()
+        qvec = self.embedder.encode_query(query)
+        res = col.query(
+            query_embeddings=[qvec],  # type: ignore[arg-type]
+            n_results=n,
+            include=["distances"],
+        )
+        ids = (res.get("ids") or [[]])[0]
+        dists = (res.get("distances") or [[]])[0]
+        out: list[tuple[str, float]] = []
+        for i, cid in enumerate(ids):
+            dist = dists[i] if i < len(dists) else None
+            out.append((cid, (1.0 - float(dist)) if dist is not None else 0.0))
+        return out
+
     def _sparse_rank(self, query: str, n: int) -> list[str]:
         assert self._bm25 is not None
         scores = self._bm25.get_scores(_tokenize(query))
         ranked = sorted(zip(self._bm25_ids, scores, strict=True), key=lambda x: x[1], reverse=True)
         return [cid for cid, _ in ranked[:n]]
+
+    def _sparse_rank_scored(self, query: str, n: int) -> list[tuple[str, float]]:
+        assert self._bm25 is not None
+        scores = self._bm25.get_scores(_tokenize(query))
+        ranked = sorted(zip(self._bm25_ids, scores, strict=True), key=lambda x: x[1], reverse=True)
+        return [(cid, float(sc)) for cid, sc in ranked[:n]]
 
     @staticmethod
     def _rrf(dense: list[str], sparse: list[str], rrf_k: int) -> list[tuple[str, float]]:

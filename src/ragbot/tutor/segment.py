@@ -1,71 +1,49 @@
-"""Split model prose into typed spans for reliable colour rendering.
+"""Extract which ``[S#]`` source markers the model actually used.
 
-Scans for three things, in priority order: a full ``[Lecture N @ HH:MM:SS]`` citation, a
-standalone ``Lecture N`` reference, and a standalone ``HH:MM:SS`` timestamp. Everything else
-is plain text. Because the authoritative chips render from the structured reference list,
-imperfect segmentation here only ever degrades to plain text — never to wrong data.
+The model writes markdown prose with inline ``[S#]`` citation markers. The frontend renders the
+markdown and resolves the markers into chips (via ``marker_map``); the backend only needs to know
+which markers resolved — to build the "Sources for this answer" list, and (for the Phase-2 trace)
+the cited-vs-retrieved set. Hallucinated ids that aren't in ``marker_map`` are ignored.
 """
 
 from __future__ import annotations
 
 import re
 
-from .schemas import LectureReference, ProseSegment, SegmentType
+from .citations import CitationRef
 
-_SCAN_RE = re.compile(
-    r"(?P<cite>\[\s*Lecture\s+\d+\s*@\s*\d{2}:\d{2}:\d{2}\s*\])"
-    r"|(?P<lecture>\bLecture\s+\d+\b)"
-    r"|(?P<ts>\b\d{2}:\d{2}:\d{2}\b)"
-)
-_NUM_RE = re.compile(r"\d+")
-_TS_INNER_RE = re.compile(r"\d{2}:\d{2}:\d{2}")
+# A bracketed source-marker group the model emits, e.g. "[S1]", "[S1][S3]" (two matches),
+# or "[S1, S3]" (one match, two ids).
+_MARKER_GROUP_RE = re.compile(r"\[\s*(S\d+(?:\s*[,;]?\s*S\d+)*)\s*\]")
+_SID_RE = re.compile(r"S(\d+)")
 
 
-def segment_prose(
-    prose: str, references: list[LectureReference] | None = None
-) -> list[ProseSegment]:
-    prefix_by_num: dict[int, str] = {}
-    for ref in references or []:
-        prefix_by_num.setdefault(ref.lecture_number, ref.lecture_prefix)
+def extract_used_markers(
+    prose: str, marker_map: dict[str, CitationRef]
+) -> tuple[list[CitationRef], list[str]]:
+    """Return ``(used_refs, used_marker_ids)`` for the resolvable ``[S#]`` markers in ``prose``.
 
-    segments: list[ProseSegment] = []
+    ``used_refs`` are the distinct cited ``CitationRef``s in first-appearance order, deduped by
+    (source, timestamp) so multiple cited timestamps on one lecture survive for the evidence
+    reference list. ``used_marker_ids`` are the surviving ``S#`` ids (deduped, first-appearance) —
+    required by the Phase-2 ``cited_vs_retrieved`` trace, which ``CitationRef`` alone can't yield.
+    """
+    used: list[CitationRef] = []
+    used_keys: set[str] = set()
+    marker_ids: list[str] = []
+    seen_markers: set[str] = set()
 
-    def push_text(text: str) -> None:
-        if not text:
-            return
-        if segments and segments[-1].type == SegmentType.text:
-            segments[-1].text += text
-        else:
-            segments.append(ProseSegment(type=SegmentType.text, text=text))
-
-    def push_lecture(num: int) -> None:
-        segments.append(
-            ProseSegment(
-                type=SegmentType.lecture,
-                text=f"Lecture {num}",
-                lecture_prefix=prefix_by_num.get(num),
-            )
-        )
-
-    def push_ts(ts: str) -> None:
-        segments.append(ProseSegment(type=SegmentType.timestamp, text=ts, timestamp=ts))
-
-    pos = 0
-    for m in _SCAN_RE.finditer(prose):
-        push_text(prose[pos : m.start()])
-        pos = m.end()
-        if m.group("cite"):
-            inner = m.group("cite")
-            num = int(_NUM_RE.search(inner).group())  # type: ignore[union-attr]
-            ts = _TS_INNER_RE.search(inner).group()  # type: ignore[union-attr]
-            push_text("[")
-            push_lecture(num)
-            push_text(" @ ")
-            push_ts(ts)
-            push_text("]")
-        elif m.group("lecture"):
-            push_lecture(int(_NUM_RE.search(m.group("lecture")).group()))  # type: ignore[union-attr]
-        else:
-            push_ts(m.group("ts"))
-    push_text(prose[pos:])
-    return segments
+    for m in _MARKER_GROUP_RE.finditer(prose):
+        for sid in _SID_RE.findall(m.group(1)):
+            marker = f"S{sid}"
+            ref = marker_map.get(marker)
+            if ref is None:
+                continue  # hallucinated id -> ignore
+            if marker not in seen_markers:
+                seen_markers.add(marker)
+                marker_ids.append(marker)
+            key = f"{ref.link_target or ref.display}@{ref.timestamp or ''}"
+            if key not in used_keys:
+                used_keys.add(key)
+                used.append(ref)
+    return used, marker_ids

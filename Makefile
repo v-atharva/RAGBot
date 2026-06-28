@@ -1,4 +1,4 @@
-.PHONY: install ingest index build-all eval serve run web web-install lint typecheck test check fmt
+.PHONY: install ingest index lecture-meta build-all eval serve run web web-install lint typecheck test check fmt
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -13,7 +13,12 @@ ingest:
 index:
 	$(PY) -m ragbot.retrieve.build_index
 
-build-all: ingest index
+# Lecture metadata (numbers/dates/titles) powering human-friendly citations. Derived from the
+# (gitignored) transcripts + summaries, so it is regenerated here rather than committed.
+lecture-meta:
+	$(PY) scripts/build_lecture_meta.py
+
+build-all: ingest index lecture-meta
 
 eval:
 	$(PY) -m ragbot.eval.run

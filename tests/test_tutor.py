@@ -8,8 +8,6 @@ from ragbot.tutor.enrich import enrich_query, framing_context
 from ragbot.tutor.llm import strip_think
 from ragbot.tutor.prompts import build_lecture_only_user
 from ragbot.tutor.references import build_reference_list, lecture_label, recording_label
-from ragbot.tutor.schemas import SegmentType
-from ragbot.tutor.segment import segment_prose
 
 
 def _summary(prefix: str, title: str, highlights: list[tuple[str, str]]) -> LectureSummary:
@@ -90,15 +88,6 @@ def test_framing_context_is_summary_derived():
     framing = framing_context([entry], summaries)
     assert "Lecture 17" in framing
     assert "every determinant is a candidate key" in framing
-
-
-def test_segment_prose_types_lecture_and_timestamp():
-    types = {s.type for s in segment_prose("See [Lecture 24 @ 00:00:47] now.")}
-    assert SegmentType.lecture in types
-    assert SegmentType.timestamp in types
-    # The lecture span carries a clean label.
-    lec = next(s for s in segment_prose("[Lecture 24 @ 00:00:47]") if s.type == SegmentType.lecture)
-    assert lec.text == "Lecture 24"
 
 
 def test_strip_think_removes_trace():

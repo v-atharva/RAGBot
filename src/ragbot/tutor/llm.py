@@ -41,12 +41,18 @@ class OllamaClient:
     """Local Ollama backend (POST {base_url}/api/chat)."""
 
     def __init__(
-        self, base_url: str, model: str, timeout: float = 180.0, num_ctx: int = 16384
+        self,
+        base_url: str,
+        model: str,
+        timeout: float = 180.0,
+        num_ctx: int = 16384,
+        keep_alive: str = "10m",
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
         self.num_ctx = num_ctx
+        self.keep_alive = keep_alive
 
     def chat(self, system: str, user: str, *, temperature: float = 0.2) -> str:
         payload = {
@@ -61,6 +67,8 @@ class OllamaClient:
             # (leaving the answer empty) and make every reply much slower. strip_think() below
             # still scrubs any stray <think> trace so callers always get clean prose.
             "think": False,
+            # Keep the model resident between turns (and let /model/unload evict it explicitly).
+            "keep_alive": self.keep_alive,
             "options": {"temperature": temperature, "num_ctx": self.num_ctx},
         }
         try:
@@ -122,4 +130,5 @@ def get_llm(settings: Settings) -> LLMClient:
         settings.ollama_model,
         settings.request_timeout,
         settings.ollama_num_ctx,
+        settings.ollama_keep_alive,
     )

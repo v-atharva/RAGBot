@@ -1,0 +1,8 @@
+{"question": "how to turn verbose on on mac?", "mode": "course_wide", "expect_sources": ["01_PE01", "02_January_17"], "expect_no_match": false}
+{"question": "when did the professor mention verbose on mac?", "mode": "lecture_only", "expect_sources": ["01_PE01"], "expect_no_match": false}
+{"question": "how do I use the tee command to capture my session?", "mode": "course_wide", "expect_sources": ["01_PE01"], "expect_no_match": false}
+{"question": "how do I normalize a table?", "mode": "course_wide", "expect_sources": ["Normal", "Normalization"], "expect_no_match": false}
+{"question": "what is BCNF?", "mode": "course_wide", "expect_sources": ["24_BCNF"], "expect_no_match": false}
+{"question": "where are multiple table joins covered?", "mode": "lecture_only", "expect_sources": ["JOIN_MULTIPLE_TABLES"], "expect_no_match": false}
+{"question": "how do I deploy a Kubernetes cluster?", "mode": "course_wide", "expect_sources": [], "expect_no_match": true}
+{"question": "what is the airspeed velocity of an unladen swallow?", "mode": "lecture_only", "expect_sources": [], "expect_no_match": true}

@@ -61,3 +61,30 @@ def test_category_filter():
     idx = _index_with_records(records)
     hits = idx.search("join", k=5, categories=["assignment_prompt"])
     assert {h.category for h in hits} == {"assignment_prompt"}
+
+
+def test_search_with_trace_records_scores_and_excludes():
+    records = [
+        _rec("sol", "normalize the table answer key", "high", "solution_key"),
+        _rec("lec", "normalization lecture on normal forms"),
+    ]
+    idx = _index_with_records(records)
+    # Stub the scored dense rank so the trace path needs no Chroma/embeddings.
+    idx._dense_rank_scored = lambda q, n: [(r["chunk_id"], 0.5) for r in records][:n]  # type: ignore[method-assign]
+    hits, trace = idx.search_with_trace("normalize the table", k=5, exclude_high_sensitivity=True)
+    # Guardrail still drops the solution key, and the trace records WHY.
+    assert "sol" not in {h.chunk_id for h in hits}
+    assert ("sol", "sensitivity") in trace.excluded
+    # Per-stage scores are recorded.
+    assert trace.dense and trace.dense[0][1] == 0.5
+    assert trace.sparse  # BM25 scored ranking
+    assert trace.fused  # RRF fusion
+
+
+def test_lexical_gate_report():
+    records = [_rec("lec", "normalization and boyce codd normal form")]
+    idx = _index_with_records(records)
+    on = idx.lexical_gate_report("explain normalization")
+    assert on.passed and on.fraction >= 0.5 and "normalization" in on.in_vocab
+    off = idx.lexical_gate_report("deploy kubernetes clusters")
+    assert not off.passed

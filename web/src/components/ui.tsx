@@ -8,7 +8,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
     <div
       className={cn(
         "rounded-2xl border border-border bg-surface",
-        "shadow-[var(--shadow)]",
+        "shadow-[var(--shadow)] glow-hover",
         className,
       )}
       {...props}
@@ -26,7 +26,7 @@ export function Button({ className, variant = "primary", ...props }: ButtonProps
     "transition-colors focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-[var(--ring)] disabled:opacity-50 disabled:pointer-events-none";
   const variants = {
-    primary: "bg-accent text-accent-fg hover:opacity-90 active:opacity-100 px-4 py-2.5",
+    primary: "bg-accent text-accent-fg hover:opacity-90 active:opacity-100 px-4 py-2.5 glow",
     outline: "border border-border bg-surface hover:bg-surface-2 px-4 py-2.5",
     ghost: "hover:bg-surface-2 px-3 py-2",
   } as const;
@@ -51,6 +51,10 @@ export function Badge({
       {children}
     </span>
   );
+}
+
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("shimmer rounded-lg bg-surface-2", className)} aria-hidden />;
 }
 
 export function Spinner({ className }: { className?: string }) {

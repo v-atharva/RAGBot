@@ -24,14 +24,15 @@ def _topics_for_location(summary: LectureSummary | None, timestamps: list[str]) 
     return [by_ts[ts] for ts in timestamps if ts in by_ts]
 
 
-def enrich_query(
+def enrich_query_with_terms(
     question: str,
     entries: list[ConceptEntry],
     summaries_by_prefix: dict[str, LectureSummary],
     *,
     max_terms: int = 12,
-) -> str:
-    """Append concept aliases + summary highlight topics to the query for better retrieval."""
+) -> tuple[str, list[str]]:
+    """Like :func:`enrich_query`, but also returns the appended terms (for the Phase-2 trace,
+    so the UI can highlight the query expansion)."""
     terms: list[str] = []
     for entry in entries:
         terms.extend(CONCEPT_ALIASES.get(entry.concept, []))
@@ -51,7 +52,21 @@ def enrich_query(
         if len(picked) >= max_terms:
             break
 
-    return f"{question} {' '.join(picked)}".strip() if picked else question
+    enriched = f"{question} {' '.join(picked)}".strip() if picked else question
+    return enriched, picked
+
+
+def enrich_query(
+    question: str,
+    entries: list[ConceptEntry],
+    summaries_by_prefix: dict[str, LectureSummary],
+    *,
+    max_terms: int = 12,
+) -> str:
+    """Append concept aliases + summary highlight topics to the query for better retrieval."""
+    return enrich_query_with_terms(
+        question, entries, summaries_by_prefix, max_terms=max_terms
+    )[0]
 
 
 def framing_context(

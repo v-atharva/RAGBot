@@ -34,7 +34,9 @@ function ReferenceCard({ ref_ }: { ref_: LectureReference }) {
             First proper mention
           </span>
         )}
-        <span className="text-sm font-medium text-muted">{ref_.lecture_title}</span>
+        {ref_.lecture_title && (
+          <span className="text-sm font-medium text-muted">{ref_.lecture_title}</span>
+        )}
       </div>
 
       {ref_.timestamps.length > 0 && (
@@ -56,28 +58,57 @@ function ReferenceCard({ ref_ }: { ref_: LectureReference }) {
   );
 }
 
+function SectionHeading({ title }: { title: string }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </h3>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 export function References({
   references,
   caption,
+  coverage = [],
+  coverageCaption = "",
 }: {
   references: LectureReference[];
   caption: string;
+  coverage?: LectureReference[];
+  coverageCaption?: string;
 }) {
-  if (references.length === 0) return null;
+  if (references.length === 0 && coverage.length === 0) return null;
   return (
     <section className="mt-6">
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Lecture references
-        </h3>
-        <span className="h-px flex-1 bg-border" />
-      </div>
-      {caption && <p className="mb-3 text-sm text-muted">{caption}</p>}
-      <div className="grid gap-3">
-        {references.map((r) => (
-          <ReferenceCard key={r.lecture_prefix} ref_={r} />
-        ))}
-      </div>
+      {references.length > 0 && (
+        <>
+          <SectionHeading title="Sources for this answer" />
+          {caption && <p className="mb-3 text-sm text-muted">{caption}</p>}
+          <div className="grid gap-3">
+            {references.map((r, i) => (
+              <ReferenceCard key={`${r.lecture_prefix}-${i}`} ref_={r} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {coverage.length > 0 && (
+        <details className="mt-4 rounded-xl border border-border bg-surface-2/40 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-muted">
+            Where else this appears in the course
+            <span className="ml-1 font-normal">({coverage.length})</span>
+          </summary>
+          {coverageCaption && <p className="mt-2 text-sm text-muted">{coverageCaption}</p>}
+          <div className="mt-3 grid gap-3">
+            {coverage.map((r, i) => (
+              <ReferenceCard key={`cov-${r.lecture_prefix}-${i}`} ref_={r} />
+            ))}
+          </div>
+        </details>
+      )}
     </section>
   );
 }

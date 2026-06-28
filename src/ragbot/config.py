@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"  # OLLAMA_BASE_URL
     ollama_model: str = "qwen3.5:9b"  # OLLAMA_MODEL
     ollama_num_ctx: int = 16384  # context window; default 4096 overflows on grounded prompts
+    ollama_keep_alive: str = "10m"  # OLLAMA_KEEP_ALIVE: how long Ollama keeps the model resident
     llm_api_key: str = ""  # LLM_API_KEY (hosted backend, later)
     anthropic_model: str = "claude-sonnet-4-5"  # ANTHROPIC_MODEL (later)
     request_timeout: float = 180.0
@@ -37,6 +38,18 @@ class Settings(BaseSettings):
 
     # --- retrieval knobs ---
     retrieval_k: int = 8
+    # Assignment guardrail: when True, solution-key / exam-review chunks (sensitivity=high) are
+    # withheld from retrieval so the tutor won't hand over PE/HW answers. Default False — the
+    # tutor may use those sources and fully solve assignment questions. (Grounding/citations are
+    # unaffected; this only governs which sources the model is allowed to see.)
+    block_solution_keys: bool = False
+
+    # --- synthesis knobs ---
+    # Course-wide synthesis runs slightly warmer for richer prose (analogies/examples) while
+    # staying low enough to keep citations accurate; validate changes against the eval golden set.
+    course_wide_temperature: float = 0.3
+    # Cap conversation history threaded into prompts (oldest turns dropped beyond this).
+    max_history_turns: int = 6
 
     @property
     def chroma_dir(self) -> str:
